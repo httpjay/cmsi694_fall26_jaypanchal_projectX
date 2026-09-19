@@ -1,2 +1,2 @@
 # Merge Demo
-Favorite language: Python
+Favorite language: Java
