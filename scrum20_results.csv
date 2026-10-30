@@ -4,4 +4,5 @@ Baseline: biggest award first,22,56.168774240000005,24.9
 Model A: predicted dollars,50,68.09597357999999,30.2
 Model B: chance of growth alone,61,23.224430949999995,10.3
 Model B: chance x award size,77,59.453246410000006,26.4
+Model C: two-part expected dollars,54,74.68729017,33.1
 Perfect knowledge,200,225.45506663999998,100.0

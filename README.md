@@ -20,11 +20,12 @@ Measured on a held-out year the model never saw during training:
 |---|---|---|
 | Random | 6 | $0.2M |
 | Biggest award first (baseline) | 22 | $56.2M |
-| **Model** | **50** | **$68.1M** |
+| Model A, dollars predicted directly | 50 | $68.1M |
+| **Model C, two-part** | **54** | **$74.7M** |
 | Perfect knowledge (ceiling) | 200 | $225.5M |
 
-A 21% improvement over the baseline. The improvement holds at watchlist sizes
-of 100, 200 and 500.
+A 33% improvement over the baseline, and 33.1% of what perfect foresight would
+capture. The improvement holds at watchlist sizes of 100, 200 and 500.
 
 ---
 
@@ -136,6 +137,29 @@ federal budget years, so the month mix is identical between them.
 watchlist. Accuracy is not used: under 4% of contracts grow, so a model
 predicting "no growth" every time would be 96% accurate and useless.
 
+**Calibration, not just ranking.** A first model predicted growth in dollars
+directly, using squared-error loss. It ranked contracts usefully but its
+amounts were not believable: it predicted $641M of growth against $277M that
+actually occurred, its largest single prediction was $150.6M against a real
+maximum of $23.0M, and on 503 contracts it predicted more growth than the
+contract was worth in the first place. Fitting the average of a target where
+96% of values are zero and a few are enormous pulls every prediction upward.
+
+The watchlist therefore uses a two-part model. One model gives the chance a
+contract grows at all; a second, trained only on contracts that did grow,
+gives the size on a log scale. Expected growth is the product of the two.
+Because the exponential of an average logarithm understates the mean, Duan's
+smearing estimate is applied, using the spread of the training residuals; the
+correction factor was 1.997, so the uncorrected figures would have been about
+half what they should be.
+
+The two-part model is better calibrated — $340M predicted against $277M
+actual, largest prediction $35.8M, and 101 contracts rather than 503 predicted
+to grow by more than their own value — and it also ranks better, catching
+$74.7M against $68.1M. It is still not well calibrated in absolute terms: it
+overstates total growth by about 20%, and 101 contracts still receive a
+prediction larger than the contract itself.
+
 ---
 
 ## Findings
@@ -167,7 +191,7 @@ is the highest at 5.1%; July and August are lowest at 2.8%.
 - One agency, three fiscal years. Patterns may not transfer to other agencies.
 - The 12-month window is a choice. Six or 24 months were not tested.
 - Growth is predicted, not impropriety. Most contract growth is legitimate.
-- The model reaches 30% of what a perfect ranking would capture. Most available
+- The model reaches 33% of what a perfect ranking would capture. Most available
   growth is still missed.
 - The interface shows what actually happened to each contract. A live tool would
   not have that column; it is shown here because this is an evaluation.
