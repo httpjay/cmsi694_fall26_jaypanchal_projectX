@@ -100,13 +100,21 @@ def watchlist(
 
     where = " AND ".join(clauses)
 
+    # running_total is the money a reviewer would have found by reading the
+    # list from the top down to this row. It is computed over the whole
+    # watchlist in rank order BEFORE any filter is applied, because it
+    # describes the real review order, not the filtered view.
     data = rows(f"""
-        SELECT "rank", contract_award_unique_key, award_date, original_award,
-               predicted_dollars, predicted_chance, naics_code,
-               product_service_code, extent_competed, contract_pricing_type,
-               planned_duration_days, under_umbrella,
-               target_dollars, target_grew
-        FROM watchlist
+        WITH ranked AS (
+            SELECT "rank", contract_award_unique_key, award_date, original_award,
+                   predicted_dollars, predicted_chance, naics_code,
+                   product_service_code, extent_competed, contract_pricing_type,
+                   planned_duration_days, under_umbrella,
+                   target_dollars, target_grew,
+                   SUM(target_dollars) OVER (ORDER BY "rank") AS running_total
+            FROM watchlist
+        )
+        SELECT * FROM ranked
         WHERE {where}
         ORDER BY "rank"
         LIMIT :limit OFFSET :offset
