@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Project X — Contract Watchlist</title>
+<title>Contract Watchlist</title>
 <style>
   :root {
     --bg: #f7f6f3;
@@ -15,7 +15,9 @@
     --ink-3: #8b877f;
     --accent: #1f4e79;
     --accent-soft: #e8eff6;
-    --up: #9c3024;
+    --guess: #6b4e8f;
+    --guess-soft: #f2eef8;
+    --actual: #9c3024;
     --flat: #5f7a52;
   }
   * { box-sizing: border-box; }
@@ -23,77 +25,85 @@
     margin: 0;
     background: var(--bg);
     color: var(--ink);
-    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
 
-  header {
-    background: var(--surface);
-    border-bottom: 1px solid var(--line);
-    padding: 20px 28px 0;
-  }
-  .title-row { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
-  h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  header { background: var(--surface); border-bottom: 1px solid var(--line); padding: 22px 28px 0; }
+  h1 { font-size: 21px; font-weight: 600; margin: 0 0 2px; letter-spacing: -0.01em; }
   .sub { color: var(--ink-3); font-size: 13px; }
 
-  .stats { display: flex; gap: 34px; flex-wrap: wrap; margin: 18px 0 0; padding-bottom: 18px; }
-  .stat .label { font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-3); }
-  .stat .value { font-size: 23px; font-weight: 600; margin-top: 3px; letter-spacing: -0.02em; }
-  .stat .note { font-size: 12px; color: var(--ink-2); margin-top: 1px; }
-  .stat.highlight .value { color: var(--accent); }
+  /* ---- the explainer: what this is, in plain words ---- */
+  .explain { display: grid; grid-template-columns: repeat(3, minmax(0,1fr));
+             gap: 26px; margin: 20px 0 0; max-width: 1150px; }
+  @media (max-width: 900px) { .explain { grid-template-columns: 1fr; gap: 14px; } }
+  .explain h3 { font-size: 13px; font-weight: 600; margin: 0 0 4px; color: var(--ink); }
+  .explain p { margin: 0; font-size: 14px; color: var(--ink-2); line-height: 1.6; }
 
-  .bar { height: 5px; background: var(--line); border-radius: 3px; margin-top: 7px; width: 150px; overflow: hidden; }
-  .bar > i { display: block; height: 100%; background: var(--accent); }
+  /* ---- does it work: three sentences, not three jargon tiles ---- */
+  .result { margin: 22px 0 0; padding: 18px 0 20px; border-top: 1px solid var(--line); max-width: 1150px; }
+  .result > .section-head { font-size: 13px; font-weight: 600; margin-bottom: 12px; }
+  .row3 { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .claim { display: grid; grid-template-columns: 1fr 170px 130px; gap: 14px;
+           align-items: center; font-size: 14px; }
+  @media (max-width: 760px) { .claim { grid-template-columns: 1fr; gap: 3px; } }
+  .claim .amount { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; text-align: right; }
+  @media (max-width: 760px) { .claim .amount { text-align: left; } }
+  .claim.best .amount { color: var(--accent); }
+  .claim .track { height: 7px; background: var(--line); border-radius: 4px; overflow: hidden; }
+  .claim .track > i { display: block; height: 100%; background: var(--ink-3); }
+  .claim.best .track > i { background: var(--accent); }
+  .verdict { margin-top: 14px; font-size: 14px; color: var(--ink-2); }
+  .verdict b { color: var(--ink); }
 
-  main { display: grid; grid-template-columns: minmax(0,1fr) 370px; gap: 0; align-items: start; }
+  main { display: grid; grid-template-columns: minmax(0,1fr) 380px; align-items: start; }
   @media (max-width: 1080px) { main { grid-template-columns: 1fr; } }
-
   .panel-left { padding: 20px 28px 60px; min-width: 0; }
-  .panel-right {
-    border-left: 1px solid var(--line);
-    background: var(--surface);
-    padding: 20px 22px 60px;
-    min-height: calc(100vh - 160px);
-  }
+  .panel-right { border-left: 1px solid var(--line); background: var(--surface);
+                 padding: 20px 22px 60px; min-height: calc(100vh - 160px); }
 
   .controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
-  input, select {
-    font: inherit; padding: 7px 10px; border: 1px solid var(--line-strong);
-    border-radius: 6px; background: var(--surface); color: var(--ink);
-  }
+  input, select { font: inherit; padding: 7px 10px; border: 1px solid var(--line-strong);
+                  border-radius: 6px; background: var(--surface); color: var(--ink); }
   input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
   input[type=search] { min-width: 230px; }
 
-  table { width: 100%; border-collapse: collapse; background: var(--surface);
-          border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-  th {
-    text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
-    color: var(--ink-3); font-weight: 600; padding: 9px 12px;
-    border-bottom: 1px solid var(--line); background: #fbfaf8; white-space: nowrap;
-  }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { font-size: 11px; font-weight: 600; color: var(--ink-3); padding: 7px 12px;
+             background: #fbfaf8; white-space: nowrap; text-align: left; }
+  thead tr.groups th { text-transform: uppercase; letter-spacing: .07em; padding-top: 10px;
+                       border-bottom: 1px solid var(--line); text-align: center; }
+  thead tr.groups th.g-guess  { background: var(--guess-soft); color: var(--guess); }
+  thead tr.groups th.g-actual { background: #fbf2f1; color: var(--actual); }
+  thead tr.cols th { border-bottom: 1px solid var(--line); font-weight: 500; }
+  thead tr.cols th.num { text-align: right; }
   td { padding: 9px 12px; border-bottom: 1px solid var(--line); font-size: 14px; }
   tbody tr { cursor: pointer; }
   tbody tr:hover { background: #fbfaf8; }
   tbody tr.selected { background: var(--accent-soft); }
   td.num { text-align: right; }
+  td.guess  { background: #faf8fd; color: var(--guess); }
+  td.actual { background: #fdfaf9; }
+  tbody tr:hover td.guess, tbody tr:hover td.actual,
+  tbody tr.selected td.guess, tbody tr.selected td.actual { background: transparent; }
   .rank { color: var(--ink-3); font-size: 13px; }
-  .key { font-size: 12px; color: var(--ink-2); max-width: 260px; overflow: hidden;
+  .key { font-size: 12px; color: var(--ink-2); max-width: 240px; overflow: hidden;
          text-overflow: ellipsis; white-space: nowrap; }
-
-  .tag { display: inline-block; font-size: 11px; padding: 2px 7px; border-radius: 4px;
-         background: #f0eee9; color: var(--ink-2); white-space: nowrap; }
-  .grew { color: var(--up); font-weight: 600; }
+  .grew { color: var(--actual); font-weight: 600; }
   .nogrew { color: var(--ink-3); }
+  .running { color: var(--ink-2); font-weight: 600; }
+
+  .footnote { font-size: 13px; color: var(--ink-2); margin-top: 12px; max-width: 760px; }
+  .footnote b { color: var(--ink); }
 
   .pager { display: flex; gap: 8px; align-items: center; margin-top: 14px; font-size: 13px; color: var(--ink-2); }
-  button {
-    font: inherit; padding: 6px 12px; border: 1px solid var(--line-strong);
-    background: var(--surface); border-radius: 6px; cursor: pointer; color: var(--ink);
-  }
+  button { font: inherit; padding: 6px 12px; border: 1px solid var(--line-strong);
+           background: var(--surface); border-radius: 6px; cursor: pointer; color: var(--ink); }
   button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
   button:disabled { opacity: .4; cursor: default; }
 
-  .detail h2 { font-size: 15px; margin: 0 0 3px; font-weight: 600; }
+  .detail h2 { font-size: 16px; margin: 0 0 3px; font-weight: 600; }
   .detail .key-full { font-size: 11px; color: var(--ink-3); word-break: break-all; margin-bottom: 16px; }
   .kv { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0;
         border-bottom: 1px solid var(--line); font-size: 13px; }
@@ -101,48 +111,88 @@
   .kv dd { margin: 0; text-align: right; font-weight: 500; }
   .section-label { font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
                    color: var(--ink-3); margin: 22px 0 8px; }
-  .callout { background: var(--accent-soft); border-radius: 7px; padding: 12px 14px; font-size: 13px;
-             color: #163a59; line-height: 1.5; }
+  .section-label.guess  { color: var(--guess); }
+  .section-label.actual { color: var(--actual); }
+  .callout { background: var(--accent-soft); border-radius: 7px; padding: 12px 14px;
+             font-size: 13px; color: #163a59; line-height: 1.55; }
+  .plainnote { font-size: 12px; color: var(--ink-2); margin-top: 8px; line-height: 1.55; }
   .empty { color: var(--ink-3); font-size: 14px; padding: 40px 0; text-align: center; }
-  a { color: var(--accent); }
 </style>
 </head>
 <body>
 
 <header>
-  <div class="title-row">
-    <h1>Contract watchlist</h1>
-    <span class="sub">Department of Veterans Affairs &middot; contracts awarded FY2018 &middot; ranked by predicted unplanned cost growth</span>
+  <h1>Contract watchlist</h1>
+  <div class="sub">Department of Veterans Affairs &middot; contracts signed between October 2017 and September 2018</div>
+
+  <div class="explain">
+    <div>
+      <h3>The problem</h3>
+      <p>The government signs a contract at one price. Many end up costing more, because
+      work gets added after signing. That extra spending is public record — but there were
+      <b id="nContracts">—</b> contracts in this one year, and nobody has time to read them all.</p>
+    </div>
+    <div>
+      <h3>What this list is</h3>
+      <p>Every contract is scored on the day it was signed, using only what was known that
+      day. The ones most likely to cost more are put at the top. A reviewer reads 200
+      instead of all of them.</p>
+    </div>
+    <div>
+      <h3>How to use it</h3>
+      <p>Start at the top and work down. A contract near the top is one worth a closer
+      look — not one that has done anything wrong. Most contracts grow for good reasons.</p>
+    </div>
   </div>
-  <div class="stats" id="stats"><span class="sub">Loading…</span></div>
+
+  <div class="result">
+    <div class="section-head">Does it work? Three ways of choosing 200 contracts to review, tested on a year the model never saw.</div>
+    <div class="row3" id="claims"><span class="sub">Loading…</span></div>
+    <div class="verdict" id="verdict"></div>
+  </div>
 </header>
 
 <main>
   <section class="panel-left">
     <div class="controls">
-      <input type="search" id="search" placeholder="Search contract key…">
-      <select id="competed"><option value="">All competition types</option></select>
+      <input type="search" id="search" placeholder="Search by contract number…">
+      <select id="competed"><option value="">Any kind of competition</option></select>
       <select id="minAward">
-        <option value="0">Any award size</option>
-        <option value="100000">$100k and above</option>
-        <option value="1000000">$1M and above</option>
-        <option value="10000000">$10M and above</option>
+        <option value="0">Any contract size</option>
+        <option value="100000">$100,000 and above</option>
+        <option value="1000000">$1 million and above</option>
+        <option value="10000000">$10 million and above</option>
       </select>
     </div>
 
-    <table>
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Contract</th>
-          <th class="num">Awarded</th>
-          <th class="num">Predicted growth</th>
-          <th>Competition</th>
-          <th class="num">What happened</th>
-        </tr>
-      </thead>
-      <tbody id="tbody"></tbody>
-    </table>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr class="groups">
+            <th colspan="3"></th>
+            <th colspan="1" class="g-guess">What the model guessed on signing day</th>
+            <th colspan="2" class="g-actual">What actually happened afterwards</th>
+          </tr>
+          <tr class="cols">
+            <th>#</th>
+            <th>Contract</th>
+            <th class="num">Signed for</th>
+            <th class="num">Extra cost expected</th>
+            <th class="num">Extra cost</th>
+            <th class="num">Money found so far</th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+
+    <p class="footnote">
+      <b>Reading this table.</b> The purple column is a guess the model made before anything
+      happened. It is an estimate, not a finding, and not an accusation against anyone.
+      The two red columns are the public record of what the contract actually cost.
+      <b>Money found so far</b> adds up the real extra cost as you read down from the top, so
+      you can see what a reviewer would have found by stopping at any point.
+    </p>
 
     <div class="pager">
       <button id="prev">Previous</button>
@@ -152,7 +202,7 @@
   </section>
 
   <aside class="panel-right" id="detail">
-    <div class="empty">Select a contract to see why it is ranked here.</div>
+    <div class="empty">Pick a contract from the list to see it in full.</div>
   </aside>
 </main>
 
@@ -160,43 +210,74 @@
 const money = n => {
   if (n === null || n === undefined) return "—";
   const a = Math.abs(n);
-  if (a >= 1e9) return (n/1e9).toFixed(2) + "B";
-  if (a >= 1e6) return (n/1e6).toFixed(2) + "M";
-  if (a >= 1e3) return (n/1e3).toFixed(0) + "k";
+  if (a >= 1e9) return (n/1e9).toFixed(2) + " billion";
+  if (a >= 1e6) return (n/1e6).toFixed(1) + " million";
+  if (a >= 1e3) return (n/1e3).toFixed(0) + ",000";
   return n.toFixed(0);
 };
 const dollars = n => (n < 0 ? "-$" : "$") + money(Math.abs(n));
+
+// compact form for inside table cells, where long words do not fit
+const moneyShort = n => {
+  if (n === null || n === undefined) return "—";
+  const a = Math.abs(n);
+  const sign = n < 0 ? "-$" : "$";
+  if (a >= 1e9) return sign + (a/1e9).toFixed(2) + "B";
+  if (a >= 1e6) return sign + (a/1e6).toFixed(2) + "M";
+  if (a >= 1e3) return sign + (a/1e3).toFixed(0) + "k";
+  return sign + a.toFixed(0);
+};
+
+// dates arrive as timestamps; nobody wants to read "2017-07-19T00:00:00"
+const niceDate = s => {
+  if (!s) return "—";
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return String(s).slice(0, 10);
+  return d.toLocaleDateString("en-GB",
+    { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+};
 
 let offset = 0, limit = 50, total = 0, selected = null;
 
 async function loadStats() {
   const s = await (await fetch("/api/summary?top_k=200")).json();
-  const pctOfCeiling = s.ceiling ? (s.watchlist_captured / s.ceiling * 100) : 0;
+
+  document.getElementById("nContracts").textContent = s.test_contracts.toLocaleString();
+
+  const widest = Math.max(s.watchlist_captured, s.baseline_captured, s.ceiling) || 1;
+  const bar = v => Math.max(1, Math.round(v / widest * 100));
+
+  const claim = (cls, sentence, amount, note) => `
+    <div class="claim ${cls}">
+      <div>${sentence}</div>
+      <div class="amount mono">${dollars(amount)}</div>
+      <div><div class="track"><i style="width:${bar(amount)}%"></i></div>
+           <div class="sub" style="margin-top:3px">${note}</div></div>
+    </div>`;
+
+  document.getElementById("claims").innerHTML =
+    claim("best",
+      "Reviewing the top 200 <b>on this list</b> would have found",
+      s.watchlist_captured,
+      `${s.watchlist_grew} of the 200 grew`) +
+    claim("",
+      "Reviewing the 200 <b>biggest contracts</b> instead would have found",
+      s.baseline_captured,
+      "the obvious way to pick 200") +
+    claim("",
+      "Reviewing the 200 that <b>actually grew the most</b> would have found",
+      s.ceiling,
+      "only possible knowing the future");
+
   const lift = s.watchlist_captured - s.baseline_captured;
   const liftPct = s.baseline_captured ? (lift / s.baseline_captured * 100) : 0;
+  const reached = s.ceiling ? (s.watchlist_captured / s.ceiling * 100) : 0;
 
-  document.getElementById("stats").innerHTML = `
-    <div class="stat highlight">
-      <div class="label">Captured by top 200</div>
-      <div class="value mono">${dollars(s.watchlist_captured)}</div>
-      <div class="note">${s.watchlist_grew} of 200 grew</div>
-      <div class="bar"><i style="width:${Math.min(100,pctOfCeiling).toFixed(0)}%"></i></div>
-    </div>
-    <div class="stat">
-      <div class="label">Baseline, biggest first</div>
-      <div class="value mono">${dollars(s.baseline_captured)}</div>
-      <div class="note">${liftPct >= 0 ? "+" : ""}${liftPct.toFixed(0)}% improvement</div>
-    </div>
-    <div class="stat">
-      <div class="label">Best possible</div>
-      <div class="value mono">${dollars(s.ceiling)}</div>
-      <div class="note">${pctOfCeiling.toFixed(0)}% reached</div>
-    </div>
-    <div class="stat">
-      <div class="label">Contracts screened</div>
-      <div class="value mono">${s.test_contracts.toLocaleString()}</div>
-      <div class="note">${dollars(s.test_total_growth)} total growth</div>
-    </div>`;
+  document.getElementById("verdict").innerHTML =
+    `So the list finds <b>${dollars(lift)} more</b> than simply picking the biggest contracts —
+     about <b>${liftPct.toFixed(0)}% better</b>. Nobody can do better than the third line,
+     because that would mean knowing the future. This list gets
+     <b>${reached.toFixed(0)}%</b> of the way there.`;
 }
 
 async function loadFilters() {
@@ -226,19 +307,19 @@ async function loadRows() {
     <tr data-key="${r.contract_award_unique_key}" class="${selected===r.contract_award_unique_key?'selected':''}">
       <td class="rank mono">${r.rank}</td>
       <td class="key">${r.contract_award_unique_key}</td>
-      <td class="num mono">${dollars(r.original_award)}</td>
-      <td class="num mono">${dollars(r.predicted_dollars)}</td>
-      <td><span class="tag">${(r.extent_competed||"—").slice(0,26)}</span></td>
-      <td class="num mono ${r.target_grew ? 'grew' : 'nogrew'}">
-        ${r.target_grew ? dollars(r.target_dollars) : "no growth"}
+      <td class="num mono">${moneyShort(r.original_award)}</td>
+      <td class="num mono guess">${moneyShort(r.predicted_dollars)}</td>
+      <td class="num mono actual ${r.target_grew ? 'grew' : 'nogrew'}">
+        ${r.target_grew ? moneyShort(r.target_dollars) : "none"}
       </td>
+      <td class="num mono actual running">${moneyShort(r.running_total)}</td>
     </tr>`).join("") || `<tr><td colspan="6" class="empty">Nothing matches those filters.</td></tr>`;
 
   document.querySelectorAll("#tbody tr[data-key]").forEach(tr =>
     tr.addEventListener("click", () => showDetail(tr.dataset.key)));
 
   document.getElementById("pageinfo").textContent =
-    total ? `${offset+1}–${Math.min(offset+limit,total)} of ${total}` : "";
+    total ? `Showing ${offset+1}–${Math.min(offset+limit,total)} of ${total}` : "";
   document.getElementById("prev").disabled = offset === 0;
   document.getElementById("next").disabled = offset + limit >= total;
 }
@@ -253,48 +334,57 @@ async function showDetail(key) {
   const ind = d.similar_by_industry, dur = d.similar_by_duration;
 
   const outcome = c.target_grew
-    ? `This contract did grow, by ${dollars(c.target_dollars)} in its first 12 months.`
-    : `This contract did not grow in its first 12 months.`;
+    ? `In the end this contract <b>did</b> cost more — ${dollars(c.target_dollars)} was added
+       in its first 12 months.`
+    : `In the end this contract <b>did not</b> cost more in its first 12 months.`;
+
+  // The classifier's probability needs saying in words, or it means nothing.
+  const inHundred = Math.max(1, Math.round((c.predicted_chance ?? 0) * 100));
 
   document.getElementById("detail").innerHTML = `
     <div class="detail">
-      <h2>Rank ${c.rank}</h2>
+      <h2>Number ${c.rank} on the list</h2>
       <div class="key-full mono">${c.contract_award_unique_key}</div>
 
       <div class="callout">${outcome}</div>
 
-      <div class="section-label">At award</div>
+      <div class="section-label">What was known on signing day</div>
       <dl style="margin:0">
-        <div class="kv"><dt>Award date</dt><dd class="mono">${c.award_date ?? "—"}</dd></div>
-        <div class="kv"><dt>Awarded amount</dt><dd class="mono">${dollars(c.original_award)}</dd></div>
-        <div class="kv"><dt>Planned duration</dt><dd class="mono">${c.planned_duration_days ?? "—"} days</dd></div>
-        <div class="kv"><dt>Competition</dt><dd>${c.extent_competed ?? "—"}</dd></div>
-        <div class="kv"><dt>Pricing</dt><dd>${c.contract_pricing_type ?? "—"}</dd></div>
+        <div class="kv"><dt>Date signed</dt><dd>${niceDate(c.award_date)}</dd></div>
+        <div class="kv"><dt>Signed for</dt><dd class="mono">${dollars(c.original_award)}</dd></div>
+        <div class="kv"><dt>Planned to run for</dt><dd class="mono">${c.planned_duration_days ?? "—"} days</dd></div>
+        <div class="kv"><dt>Kind of competition</dt><dd>${c.extent_competed ?? "—"}</dd></div>
+        <div class="kv"><dt>How the price is set</dt><dd>${c.contract_pricing_type ?? "—"}</dd></div>
         <div class="kv"><dt>Industry code</dt><dd class="mono">${c.naics_code ?? "—"}</dd></div>
-        <div class="kv"><dt>Service code</dt><dd class="mono">${c.product_service_code ?? "—"}</dd></div>
-        <div class="kv"><dt>Under an umbrella</dt><dd>${c.under_umbrella ? "Yes" : "No"}</dd></div>
+        <div class="kv"><dt>What is being bought</dt><dd class="mono">${c.product_service_code ?? "—"}</dd></div>
+        <div class="kv"><dt>Sits under a larger agreement</dt><dd>${c.under_umbrella ? "Yes" : "No"}</dd></div>
       </dl>
 
-      <div class="section-label">Prediction</div>
+      <div class="section-label guess">What the model guessed — an estimate, not a finding</div>
       <dl style="margin:0">
-        <div class="kv"><dt>Predicted growth</dt><dd class="mono">${dollars(c.predicted_dollars)}</dd></div>
-        <div class="kv"><dt>Estimated chance of growth</dt><dd class="mono">${(c.predicted_chance*100).toFixed(1)}%</dd></div>
+        <div class="kv"><dt>Extra cost expected</dt><dd class="mono">${dollars(c.predicted_dollars)}</dd></div>
+        <div class="kv"><dt>Chance of costing more</dt><dd class="mono">${((c.predicted_chance ?? 0)*100).toFixed(1)}%</dd></div>
       </dl>
+      <p class="plainnote">
+        That chance means: out of 100 contracts that looked like this one on signing day,
+        the model expects about ${inHundred} to end up costing more. It says nothing about
+        this contract being handled badly.
+      </p>
 
-      <div class="section-label">How similar contracts behaved</div>
+      <div class="section-label">How contracts like this one behaved in the past</div>
       <dl style="margin:0">
         <div class="kv">
-          <dt>Same industry and competition type</dt>
-          <dd class="mono">${ind.contracts ? `${ind.pct_grew}% of ${ind.contracts}` : "too few"}</dd>
+          <dt>Same industry and kind of competition</dt>
+          <dd class="mono">${ind.contracts ? `${ind.pct_grew}% of ${ind.contracts.toLocaleString()}` : "too few to say"}</dd>
         </div>
         <div class="kv">
-          <dt>Similar duration (±90 days)</dt>
-          <dd class="mono">${dur.contracts ? `${dur.pct_grew}% of ${dur.contracts.toLocaleString()}` : "too few"}</dd>
+          <dt>Planned to run about as long</dt>
+          <dd class="mono">${dur.contracts ? `${dur.pct_grew}% of ${dur.contracts.toLocaleString()}` : "too few to say"}</dd>
         </div>
       </dl>
-      <p class="sub" style="font-size:12px;margin-top:10px">
-        Comparison figures come from the training year only, so they reflect what was
-        knowable before this contract was awarded.
+      <p class="plainnote">
+        These come from the earlier year only, so they are things that could have been
+        known before this contract was signed.
       </p>
     </div>`;
 }
