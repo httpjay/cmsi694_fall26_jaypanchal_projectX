@@ -18,14 +18,42 @@ Measured on a held-out year the model never saw during training:
 
 | Ranking method | Contracts that grew (of 200) | Growth captured |
 |---|---|---|
-| Random | 6 | $0.2M |
+| Random | 6 | $2.1M |
 | Biggest award first (baseline) | 22 | $56.2M |
-| Model A, dollars predicted directly | 50 | $68.1M |
-| **Model C, two-part** | **54** | **$74.7M** |
+| Model A, dollars predicted directly | 46 | $83.0M |
+| **Model C, two-part** | **55** | **$67.6M** |
 | Perfect knowledge (ceiling) | 200 | $225.5M |
 
-A 33% improvement over the baseline, and 33.1% of what perfect foresight would
+A 20% improvement over the baseline, and 30% of what perfect foresight would
 capture. The improvement holds at watchlist sizes of 100, 200 and 500.
+
+**One run is not the result.** Both of the checks below matter more than the
+table above, and they disagree with each other in a way worth understanding.
+
+*Changing how the model is trained.* Five training runs with different random
+seeds gave Model C between $66.3M and $71.6M, typically $68.8M. Every one of
+them beat the baseline's $56.2M, so the advantage does not depend on a lucky
+training run. Model A ranged more widely, $68.7M to $83.0M — its range overlaps
+Model C's, so no single run can say which of the two ranks better. Model C is
+the steadier of the two, with a $5.3M spread against Model A's $14.2M.
+
+*Changing which year is tested.* Resampling the test year 400 times, Model C
+captured a typical $64.8M against the baseline's $54.2M, and beat it in 356 of
+400 resampled years — 89%. But the 95% range for the difference runs from
+−$7.1M to $25.1M. It crosses zero, so the improvement is **not** established at
+that level: in roughly one plausible year in nine, simply checking the biggest
+contracts would have done as well or better.
+
+So: the advantage is robust to how the model is trained, and probable but
+unproven against the luck of which contracts fell in the test year. The second
+is the weaker claim and is the one to quote.
+
+**Reproducibility.** An earlier version read the modelling table with a plain
+`SELECT`, which gives no guaranteed row order. Because XGBoost's `subsample`
+picks rows by position, the same code on the same data produced different
+numbers in different sessions — the headline moved between $67.6M and $74.7M
+without anything changing. The query now orders by contract key, and runs are
+repeatable.
 
 ---
 
@@ -150,15 +178,19 @@ contract grows at all; a second, trained only on contracts that did grow,
 gives the size on a log scale. Expected growth is the product of the two.
 Because the exponential of an average logarithm understates the mean, Duan's
 smearing estimate is applied, using the spread of the training residuals; the
-correction factor was 1.997, so the uncorrected figures would have been about
-half what they should be.
+correction factor was about 2.0 across every seed tried (2.002 to 2.015),
+so the uncorrected figures would have been roughly half what they should be.
 
-The two-part model is better calibrated — $340M predicted against $277M
-actual, largest prediction $35.8M, and 101 contracts rather than 503 predicted
-to grow by more than their own value — and it also ranks better, catching
-$74.7M against $68.1M. It is still not well calibrated in absolute terms: it
-overstates total growth by about 20%, and 101 contracts still receive a
-prediction larger than the contract itself.
+The two-part model is far better calibrated: $345M predicted against $277M
+actual, largest prediction $29.0M against a real maximum of $23.0M, and 109
+contracts rather than 548 predicted to grow by more than their own value. It
+is still not well calibrated in absolute terms — it overstates total growth by
+about 20%, and those 109 contracts still receive a prediction larger than the
+contract itself.
+
+On ranking the two are indistinguishable. Across five seeds their ranges
+overlap, so the watchlist uses Model C for the calibration reasons above and
+because it is the steadier of the two, not because it ranks better.
 
 ---
 
@@ -191,7 +223,7 @@ is the highest at 5.1%; July and August are lowest at 2.8%.
 - One agency, three fiscal years. Patterns may not transfer to other agencies.
 - The 12-month window is a choice. Six or 24 months were not tested.
 - Growth is predicted, not impropriety. Most contract growth is legitimate.
-- The model reaches 33% of what a perfect ranking would capture. Most available
+- The model reaches 30% of what a perfect ranking would capture. Most available
   growth is still missed.
 - The interface shows what actually happened to each contract. A live tool would
   not have that column; it is shown here because this is an evaluation.
