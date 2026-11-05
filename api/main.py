@@ -95,7 +95,10 @@ def watchlist(
         clauses.append("extent_competed = :competed")
         params["competed"] = competed
     if search:
-        clauses.append("contract_award_unique_key ILIKE :search")
+        # a reviewer searches by company name far more often than by
+        # contract number, so both are matched
+        clauses.append("(contract_award_unique_key ILIKE :search"
+                       " OR recipient_name ILIKE :search)")
         params["search"] = f"%{search}%"
 
     where = " AND ".join(clauses)
@@ -106,7 +109,8 @@ def watchlist(
     # describes the real review order, not the filtered view.
     data = rows(f"""
         WITH ranked AS (
-            SELECT "rank", contract_award_unique_key, award_date, original_award,
+            SELECT "rank", contract_award_unique_key, recipient_name,
+                   award_date, original_award,
                    predicted_dollars, predicted_chance, naics_code,
                    product_service_code, extent_competed, contract_pricing_type,
                    planned_duration_days, under_umbrella,
