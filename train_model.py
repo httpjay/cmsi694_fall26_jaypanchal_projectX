@@ -12,6 +12,7 @@ Run:  python3 train_model.py
 """
 
 import sys
+import json
 import numpy as np
 import pandas as pd
 import xgboost as xgb
@@ -39,6 +40,14 @@ RANDOM_SEED = 42
 # 2. LOAD
 # ---------------------------------------------------------------
 
+# A plain SELECT gives NO guaranteed row order. PostgreSQL may hand the rows
+# back differently after the table has been written to or tidied internally.
+# That matters here: XGBoost's subsample picks rows by position, so a changed
+# order means different trees and a different top 200. Ordering by the key
+# makes every run start from exactly the same table.
+MODEL_FINAL_QUERY = "SELECT * FROM model_final ORDER BY contract_award_unique_key"
+
+
 def load_data():
     if CSV_PATH:
         print(f"Reading {CSV_PATH}")
@@ -47,11 +56,11 @@ def load_data():
     try:
         from sqlalchemy import create_engine
         engine = create_engine(DB_URL)
-        return pd.read_sql("SELECT * FROM model_final", engine)
+        return pd.read_sql(MODEL_FINAL_QUERY, engine)
     except ImportError:
         import psycopg2
         conn = psycopg2.connect(DB_URL)
-        df = pd.read_sql("SELECT * FROM model_final", conn)
+        df = pd.read_sql(MODEL_FINAL_QUERY, conn)
         conn.close()
         return df
 
@@ -536,12 +545,112 @@ names = pd.read_sql(
     engine)
 watchlist = watchlist.merge(names, on="contract_award_unique_key", how="left")
 
+# ---------------------------------------------------------------
+# 11b. WHY IS THIS CONTRACT ON THE LIST?
+# ---------------------------------------------------------------
+#
+# A ranking nobody can question is a ranking nobody will act on. Each
+# contract gets the three things that moved its score the most.
+#
+# The numbers come from TreeSHAP, which is built into XGBoost - no extra
+# package to install. pred_contribs=True returns, for every contract, how
+# many units of the model's output each feature added or removed. The
+# contributions plus a bias term add up exactly to the prediction, so
+# nothing is hand-waved.
+#
+# The score is a product of two models:
+#
+#     expected dollars = chance of growing  x  size if it grows
+#
+# Logarithms turn that product into a sum, which is what makes the two
+# models' contributions addable:
+#
+#     log(expected) = log(chance) + log(size)
+#
+# Model C already predicts in log dollars, so its contributions are in log
+# units directly. The classifier's are in log-odds rather than log-chance,
+# but only 4% of contracts grow, and for a chance that small the two are
+# nearly identical - log(p/(1-p)) is within a few per cent of log(p). The
+# sum is therefore an approximation, but a close one, and it is the right
+# shape: a feature that makes growth more likely AND makes it larger shows
+# up as one big effect rather than two half-effects.
+#
+# Reported as each factor's SHARE of the total movement, not as a raw log
+# value and not as a multiplier. A multiplier is the natural reading of a log
+# contribution, but contract size swamps everything else, so it comes out as
+# "raised the estimate 2,926 times" - true, and useless to a reader. A share
+# of the total is bounded, needs no explanation, and answers the question a
+# reviewer actually has: of everything that put this contract here, how much
+# was this one thing?
+
+print("\nWorking out why each contract is on the list...")
+
+PLAIN_NAME = {
+    "planned_duration_days": "How long it is planned to run",
+    "extent_competed":       "Kind of competition",
+    "contract_pricing_type": "How the price is set",
+    "naics_code":            "Industry",
+    "product_service_code":  "What is being bought",
+    "award_month":           "Month it was signed",
+    "under_umbrella":        "Sits under a larger agreement",
+    "original_award":        "Size of the contract",
+    "log_award":             "Size of the contract",
+}
+
+explain_rows = watchlist[FEATURES]
+dmat = xgb.DMatrix(explain_rows, enable_categorical=True)
+contrib = (model_b.get_booster().predict(dmat, pred_contribs=True)[:, :-1]
+           + model_c.get_booster().predict(dmat, pred_contribs=True)[:, :-1])
+contrib = pd.DataFrame(contrib, columns=FEATURES, index=watchlist.index)
+
+# original_award and log_award are the same fact twice. Added together they
+# read as one reason instead of two competing ones.
+contrib["original_award"] = contrib["original_award"] + contrib["log_award"]
+contrib = contrib.drop(columns=["log_award"])
+
+
+def readable_value(feature, value):
+    if pd.isna(value):
+        return "not recorded"
+    if feature == "original_award":
+        return f"${value/1e6:,.1f}M" if value >= 1e6 else f"${value:,.0f}"
+    if feature == "planned_duration_days":
+        return f"{int(value):,} days"
+    if feature == "under_umbrella":
+        return "yes" if value else "no"
+    if feature == "award_month":
+        return ["", "January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November",
+                "December"][int(value)]
+    return str(value)
+
+
+def explain_one(i):
+    row = contrib.loc[i]
+    total = float(row.abs().sum())
+    if total == 0:
+        return json.dumps([])
+    top = row.reindex(row.abs().sort_values(ascending=False).index).head(3)
+    return json.dumps([
+        {
+            "label": PLAIN_NAME.get(feature, feature),
+            "value": readable_value(feature, watchlist.loc[i, feature]),
+            "direction": "up" if effect > 0 else "down",
+            # how much of everything that moved this contract was this one thing
+            "share": round(abs(float(effect)) / total * 100, 1),
+        }
+        for feature, effect in top.items()
+    ])
+
+
+watchlist["explanation"] = [explain_one(i) for i in watchlist.index]
+
 cols = ["rank", "contract_award_unique_key", "recipient_name",
         "award_date", "original_award",
         "predicted_dollars", "predicted_chance", "predicted_size_if_grows",
         "naics_code", "product_service_code", "extent_competed",
         "contract_pricing_type", "planned_duration_days", "under_umbrella",
-        "target_dollars", "target_grew"]
+        "target_dollars", "target_grew", "explanation"]
 
 watchlist[cols].to_sql("watchlist", engine, if_exists="replace", index=False)
 print(f"\nSaved top {len(watchlist)} contracts to the watchlist table")
