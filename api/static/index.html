@@ -88,7 +88,10 @@
   tbody tr:hover td.guess, tbody tr:hover td.actual,
   tbody tr.selected td.guess, tbody tr.selected td.actual { background: transparent; }
   .rank { color: var(--ink-3); font-size: 13px; }
-  .key { font-size: 12px; color: var(--ink-2); max-width: 240px; overflow: hidden;
+  .who { max-width: 290px; }
+  .company { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .company.unknown { color: var(--ink-3); font-weight: 400; font-style: italic; }
+  .key { font-size: 11px; color: var(--ink-3); max-width: 290px; overflow: hidden;
          text-overflow: ellipsis; white-space: nowrap; }
   .grew { color: var(--actual); font-weight: 600; }
   .nogrew { color: var(--ink-3); }
@@ -155,7 +158,7 @@
 <main>
   <section class="panel-left">
     <div class="controls">
-      <input type="search" id="search" placeholder="Search by contract number…">
+      <input type="search" id="search" placeholder="Search company or contract…">
       <select id="competed"><option value="">Any kind of competition</option></select>
       <select id="minAward">
         <option value="0">Any contract size</option>
@@ -175,7 +178,7 @@
           </tr>
           <tr class="cols">
             <th>#</th>
-            <th>Contract</th>
+            <th>Company and contract number</th>
             <th class="num">Signed for</th>
             <th class="num">Extra cost expected</th>
             <th class="num">Extra cost</th>
@@ -306,7 +309,10 @@ async function loadRows() {
   document.getElementById("tbody").innerHTML = data.rows.map(r => `
     <tr data-key="${r.contract_award_unique_key}" class="${selected===r.contract_award_unique_key?'selected':''}">
       <td class="rank mono">${r.rank}</td>
-      <td class="key">${r.contract_award_unique_key}</td>
+      <td class="who">
+        <div class="company${r.recipient_name ? '' : ' unknown'}">${r.recipient_name || "company not recorded"}</div>
+        <div class="key mono">${r.contract_award_unique_key}</div>
+      </td>
       <td class="num mono">${moneyShort(r.original_award)}</td>
       <td class="num mono guess">${moneyShort(r.predicted_dollars)}</td>
       <td class="num mono actual ${r.target_grew ? 'grew' : 'nogrew'}">
@@ -343,7 +349,8 @@ async function showDetail(key) {
 
   document.getElementById("detail").innerHTML = `
     <div class="detail">
-      <h2>Number ${c.rank} on the list</h2>
+      <h2>${c.recipient_name || "Company not recorded"}</h2>
+      <div class="sub" style="margin-bottom:8px">Number ${c.rank} on the list</div>
       <div class="key-full mono">${c.contract_award_unique_key}</div>
 
       <div class="callout">${outcome}</div>
