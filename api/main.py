@@ -131,6 +131,53 @@ def watchlist(
 
 
 # ------------------------------------------------------------------
+# The capture curve - money found against how far down the list you read
+# ------------------------------------------------------------------
+
+@app.get("/api/curve")
+def curve(n: int = Query(1000, le=5000)):
+    """Three cumulative curves over the test year.
+
+    For each position k, how many dollars of real growth a reviewer would
+    have found by reading the first k contracts of that ordering.
+
+    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW matters here. The
+    default window frame is RANGE, which lumps tied values into one step -
+    and target_dollars is zero for 96% of contracts, so RANGE would collapse
+    them all into a single point.
+    """
+    model = rows("""
+        SELECT "rank" AS k,
+               SUM(target_dollars) OVER (
+                   ORDER BY "rank"
+                   ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cum
+        FROM watchlist
+        WHERE "rank" <= :n
+        ORDER BY "rank"
+    """, n=n)
+
+    def ordered_curve(order_by):
+        return rows(f"""
+            SELECT k, cum FROM (
+                SELECT ROW_NUMBER() OVER (ORDER BY {order_by} DESC) AS k,
+                       SUM(target_dollars) OVER (
+                           ORDER BY {order_by} DESC
+                           ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS cum
+                FROM model_final WHERE split = 'test'
+            ) t WHERE k <= :n ORDER BY k
+        """, n=n)
+
+    return {
+        "n": n,
+        "model":    [[int(r["k"]), float(r["cum"] or 0)] for r in model],
+        "baseline": [[int(r["k"]), float(r["cum"] or 0)]
+                     for r in ordered_curve("original_award")],
+        "ceiling":  [[int(r["k"]), float(r["cum"] or 0)]
+                     for r in ordered_curve("target_dollars")],
+    }
+
+
+# ------------------------------------------------------------------
 # One contract, with comparable contracts for context
 # ------------------------------------------------------------------
 
