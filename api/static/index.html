@@ -56,6 +56,22 @@
   .verdict { margin-top: 14px; font-size: 14px; color: var(--ink-2); }
   .verdict b { color: var(--ink); }
 
+  /* ---- the capture curve ---- */
+  .result-grid { display: grid; grid-template-columns: minmax(0,1fr) 470px; gap: 34px; align-items: start; }
+  @media (max-width: 1180px) { .result-grid { grid-template-columns: 1fr; gap: 20px; } }
+  figure.chart { margin: 0; }
+  figure.chart svg { width: 100%; height: auto; display: block; }
+  figure.chart figcaption { font-size: 12px; color: var(--ink-2); margin-top: 6px; line-height: 1.5; }
+  .ax-line  { stroke: var(--line); stroke-width: 1; }
+  .ax-text  { font-size: 10px; fill: var(--ink-3); }
+  .ln-model    { fill: none; stroke: var(--accent); stroke-width: 2.4; }
+  .ln-baseline { fill: none; stroke: var(--ink-3); stroke-width: 1.6; }
+  .ln-ceiling  { fill: none; stroke: var(--line-strong); stroke-width: 1.4; stroke-dasharray: 4 3; }
+  .gain-area   { fill: var(--accent); opacity: .13; }
+  .mark-line   { stroke: var(--ink-3); stroke-width: 1; stroke-dasharray: 3 3; }
+  .key-text    { font-size: 11px; fill: var(--ink-2); }
+  .key-text.b  { fill: var(--accent); font-weight: 600; }
+
   main { display: grid; grid-template-columns: minmax(0,1fr) 380px; align-items: start; }
   @media (max-width: 1080px) { main { grid-template-columns: 1fr; } }
   .panel-left { padding: 20px 28px 60px; min-width: 0; }
@@ -150,8 +166,22 @@
 
   <div class="result">
     <div class="section-head">Does it work? Three ways of choosing 200 contracts to review, tested on a year the model never saw.</div>
-    <div class="row3" id="claims"><span class="sub">Loading…</span></div>
-    <div class="verdict" id="verdict"></div>
+    <div class="result-grid">
+      <div>
+        <div class="row3" id="claims"><span class="sub">Loading…</span></div>
+        <div class="verdict" id="verdict"></div>
+      </div>
+      <figure class="chart">
+        <svg id="curve" viewBox="0 0 470 300" role="img"
+             aria-label="Money found against how far down the list a reviewer reads"></svg>
+        <figcaption>
+          Read along the bottom: how many contracts a reviewer checks. Read up the
+          side: how much real extra spending they would have found by stopping there.
+          The shaded band is what this list finds over and above simply checking the
+          biggest contracts.
+        </figcaption>
+      </figure>
+    </div>
   </div>
 </header>
 
@@ -283,6 +313,106 @@ async function loadStats() {
      <b>${reached.toFixed(0)}%</b> of the way there.`;
 }
 
+// ---------------------------------------------------------------
+// The capture curve, drawn as plain SVG so the page stays one file
+// with nothing to download.
+// ---------------------------------------------------------------
+async function loadCurve() {
+  const d = await (await fetch("/api/curve?n=1000")).json();
+  const svg = document.getElementById("curve");
+  if (!d.model.length) { svg.remove(); return; }
+
+  const W = 470, H = 300, L = 54, R = 14, T = 18, B = 46;
+  const pw = W - L - R, ph = H - T - B;
+
+  const last = a => a[a.length - 1];
+  const maxX = Math.max(last(d.model)[0], last(d.baseline)[0], last(d.ceiling)[0]);
+  const maxY = Math.max(last(d.ceiling)[1], 1);
+
+  const X = k => L + (k / maxX) * pw;
+  const Y = v => T + ph - (v / maxY) * ph;
+  const line = pts => pts.map((p, i) => (i ? "L" : "M") +
+                        X(p[0]).toFixed(1) + " " + Y(p[1]).toFixed(1)).join(" ");
+
+  // the band between the model and the baseline: forwards along one, back along the other
+  const n = Math.min(d.model.length, d.baseline.length);
+  const gain = line(d.model.slice(0, n)) + " " +
+    d.baseline.slice(0, n).reverse()
+      .map(p => "L" + X(p[0]).toFixed(1) + " " + Y(p[1]).toFixed(1)).join(" ") + " Z";
+
+  const el = (tag, attrs, text) => {
+    const e = document.createElementNS("http://www.w3.org/2000/svg", tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    if (text !== undefined) e.textContent = text;
+    return e;
+  };
+
+  const parts = [];
+
+  // horizontal grid lines and the money scale
+  const steps = 4;
+  for (let i = 0; i <= steps; i++) {
+    const v = maxY * i / steps, y = Y(v);
+    parts.push(el("line", { x1: L, x2: L + pw, y1: y, y2: y, class: "ax-line" }));
+    parts.push(el("text", { x: L - 7, y: y + 3, "text-anchor": "end", class: "ax-text" },
+                  "$" + (v / 1e6).toFixed(0) + "M"));
+  }
+
+  // the contracts-checked scale
+  [0, 250, 500, 750, 1000].filter(k => k <= maxX).forEach(k => {
+    parts.push(el("text", { x: X(k), y: T + ph + 16, "text-anchor": "middle", class: "ax-text" },
+                  k.toLocaleString()));
+  });
+  parts.push(el("text", { x: L + pw / 2, y: H - 8, "text-anchor": "middle", class: "ax-text" },
+                "contracts checked, reading from the top of the list"));
+
+  parts.push(el("path", { d: gain, class: "gain-area" }));
+  parts.push(el("path", { d: line(d.ceiling),  class: "ln-ceiling" }));
+  parts.push(el("path", { d: line(d.baseline), class: "ln-baseline" }));
+  parts.push(el("path", { d: line(d.model),    class: "ln-model" }));
+
+  // Mark the watchlist size and spell the gap out in dollars. The best-possible
+  // line is so far above the other two that the gap between them is small on
+  // screen whatever scale is used, so it gets written down rather than left to
+  // the eye.
+  const K = 200;
+  const at = (pts, k) => { const p = pts.find(q => q[0] === k); return p ? p[1] : null; };
+  const mv = at(d.model, K), bv = at(d.baseline, K);
+
+  if (K <= maxX) {
+    parts.push(el("line", { x1: X(K), x2: X(K), y1: T, y2: T + ph, class: "mark-line" }));
+    parts.push(el("text", { x: X(K) + 5, y: T + 11, class: "ax-text" }, "top 200"));
+  }
+
+  if (mv !== null && bv !== null) {
+    const yM = Y(mv), yB = Y(bv), x = X(K);
+    parts.push(el("line", { x1: x, x2: x, y1: yM, y2: yB,
+                            stroke: "var(--accent)", "stroke-width": 2.5 }));
+    [yM, yB].forEach(y => parts.push(el("line",
+      { x1: x - 4, x2: x + 4, y1: y, y2: y, stroke: "var(--accent)", "stroke-width": 2 })));
+    const diff = mv - bv;
+    parts.push(el("text",
+      { x: x + 9, y: (yM + yB) / 2 + 4, class: "key-text b" },
+      (diff >= 0 ? "+" : "−") + "$" + (Math.abs(diff) / 1e6).toFixed(1) + "M here"));
+  }
+
+  // Labels at the right-hand end of each line, nudged apart when they collide.
+  const tags = [
+    { pts: d.ceiling,  cls: "key-text",   label: "best possible" },
+    { pts: d.model,    cls: "key-text b", label: "this list" },
+    { pts: d.baseline, cls: "key-text",   label: "biggest first" },
+  ].map(t => ({ ...t, y: Y(last(t.pts)[1]) - 6, x: X(last(t.pts)[0]) - 3 }))
+   .sort((a, b) => a.y - b.y);
+
+  for (let i = 1; i < tags.length; i++) {
+    if (tags[i].y - tags[i - 1].y < 13) tags[i].y = tags[i - 1].y + 13;
+  }
+  tags.forEach(t => parts.push(
+    el("text", { x: t.x, y: Math.min(t.y, T + ph - 2), "text-anchor": "end", class: t.cls }, t.label)));
+
+  svg.replaceChildren(...parts);
+}
+
 async function loadFilters() {
   const f = await (await fetch("/api/filters")).json();
   const sel = document.getElementById("competed");
@@ -401,7 +531,7 @@ document.getElementById("next").onclick = () => { offset += limit; loadRows(); }
 ["search","competed","minAward"].forEach(id =>
   document.getElementById(id).addEventListener("input", () => { offset = 0; loadRows(); }));
 
-loadStats(); loadFilters(); loadRows();
+loadStats(); loadCurve(); loadFilters(); loadRows();
 </script>
 </body>
 </html>
