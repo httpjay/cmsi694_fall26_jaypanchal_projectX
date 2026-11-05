@@ -103,6 +103,39 @@ print(f"Test  growth total: ${test['target_dollars'].sum()/1e6:,.1f}M")
 X_train, X_test = train[FEATURES], test[FEATURES]
 
 # ---------------------------------------------------------------
+# 3b. MODEL SETTINGS IN ONE PLACE
+# ---------------------------------------------------------------
+# Both the main run and the seed-stability check below build the same three
+# models. Defining them once means the two can never drift apart.
+
+def make_regressor(seed, max_depth=6):
+    return xgb.XGBRegressor(
+        n_estimators=400,
+        max_depth=max_depth,
+        learning_rate=0.05,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        enable_categorical=True,
+        tree_method="hist",
+        random_state=seed,
+    )
+
+
+def make_classifier(seed):
+    return xgb.XGBClassifier(
+        n_estimators=400,
+        max_depth=6,
+        learning_rate=0.05,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        enable_categorical=True,
+        tree_method="hist",
+        eval_metric="logloss",
+        random_state=seed,
+    )
+
+
+# ---------------------------------------------------------------
 # 4. SCORING FUNCTION
 # ---------------------------------------------------------------
 
@@ -132,16 +165,7 @@ results.append(score_ranking(test["original_award"].values, "Baseline: biggest a
 # ---------------------------------------------------------------
 
 print("\nTraining model A (predicting growth dollars)...")
-model_a = xgb.XGBRegressor(
-    n_estimators=400,
-    max_depth=6,
-    learning_rate=0.05,
-    subsample=0.8,
-    colsample_bytree=0.8,
-    enable_categorical=True,
-    tree_method="hist",
-    random_state=RANDOM_SEED,
-)
+model_a = make_regressor(RANDOM_SEED)
 model_a.fit(X_train, train["target_dollars"])
 pred_a = model_a.predict(X_test)
 results.append(score_ranking(pred_a, "Model A: predicted dollars"))
@@ -151,17 +175,7 @@ results.append(score_ranking(pred_a, "Model A: predicted dollars"))
 # ---------------------------------------------------------------
 
 print("Training model B (predicting chance of growth)...")
-model_b = xgb.XGBClassifier(
-    n_estimators=400,
-    max_depth=6,
-    learning_rate=0.05,
-    subsample=0.8,
-    colsample_bytree=0.8,
-    enable_categorical=True,
-    tree_method="hist",
-    eval_metric="logloss",
-    random_state=RANDOM_SEED,
-)
+model_b = make_classifier(RANDOM_SEED)
 model_b.fit(X_train, train["target_grew"])
 prob_b = model_b.predict_proba(X_test)[:, 1]
 
@@ -204,16 +218,7 @@ growers = train[train["target_grew"] == 1]
 print(f"  {len(growers):,} of {len(train):,} training contracts grew "
       f"({len(growers)/len(train)*100:.1f}%)")
 
-model_c = xgb.XGBRegressor(
-    n_estimators=400,
-    max_depth=5,
-    learning_rate=0.05,
-    subsample=0.8,
-    colsample_bytree=0.8,
-    enable_categorical=True,
-    tree_method="hist",
-    random_state=RANDOM_SEED,
-)
+model_c = make_regressor(RANDOM_SEED, max_depth=5)
 log_size = np.log(growers["target_dollars"].values)
 model_c.fit(growers[FEATURES], log_size)
 
@@ -324,6 +329,181 @@ else:
     print(f"Calibrating also improved the ranking by ${gap:.1f}M "
           f"in the top {TOP_K}.")
 print("="*70)
+
+# ---------------------------------------------------------------
+# 9c. IS THE IMPROVEMENT REAL, OR ONE LUCKY RUN?
+# ---------------------------------------------------------------
+#
+# Every number above comes from a single test year. The headline claim -
+# "the model beats the baseline" - could be an accident of which contracts
+# happened to land in that year. Growth is rare and enormously skewed: a
+# handful of contracts hold most of the money, so swapping two of them in or
+# out could move the total by millions.
+#
+# The bootstrap asks the question directly. Draw a new test set the same size
+# as the real one, sampling contracts WITH replacement, and score both
+# rankings on it. Repeat many times. The spread of the answers tells you how
+# much the result depends on luck.
+#
+# What matters is not whether each total is stable - they will not be - but
+# whether the DIFFERENCE between model and baseline stays positive.
+
+N_BOOTSTRAP = 400
+
+print(f"\n{'='*70}")
+print(f"IS THE IMPROVEMENT REAL? {N_BOOTSTRAP} resampled test years")
+print("="*70)
+
+def top_k_dollars(scores, dollars, k):
+    """Dollars captured by the best k contracts under this ranking."""
+    k = min(k, len(scores))
+    top = np.argpartition(-scores, k - 1)[:k]
+    return float(dollars[top].sum())
+
+boot_rng = np.random.default_rng(RANDOM_SEED)
+y_test = test["target_dollars"].values
+score_model = np.asarray(pred_c, dtype=float)
+score_base = test["original_award"].values.astype(float)
+n_test = len(y_test)
+
+boot_model, boot_base = [], []
+for _ in range(N_BOOTSTRAP):
+    idx = boot_rng.integers(0, n_test, n_test)
+    boot_model.append(top_k_dollars(score_model[idx], y_test[idx], TOP_K))
+    boot_base.append(top_k_dollars(score_base[idx], y_test[idx], TOP_K))
+
+boot_model = np.array(boot_model)
+boot_base = np.array(boot_base)
+boot_diff = boot_model - boot_base
+
+def band(a):
+    lo, mid, hi = np.percentile(a, [2.5, 50, 97.5])
+    typical = f"${mid/1e6:,.1f}M"
+    return f"{typical:>10}   95% of the time between ${lo/1e6:,.1f}M and ${hi/1e6:,.1f}M"
+
+print(f"{'':<26}{'typical':>10}")
+print(f"{'Model C, top ' + str(TOP_K):<26}{band(boot_model)}")
+print(f"{'Baseline, top ' + str(TOP_K):<26}{band(boot_base)}")
+print(f"{'Difference':<26}{band(boot_diff)}")
+
+wins = int((boot_diff > 0).sum())
+print(f"\nThe model beat the baseline in {wins} of {N_BOOTSTRAP} resampled "
+      f"years ({wins/N_BOOTSTRAP*100:.1f}%).")
+
+lo_diff = float(np.percentile(boot_diff, 2.5))
+if lo_diff > 0:
+    print("The 95% range for the difference stays above zero, so the")
+    print("improvement is not explained by which contracts landed in the")
+    print("test year.")
+else:
+    print("The 95% range for the difference crosses zero. The improvement")
+    print("is NOT established - on some plausible test years the baseline")
+    print("does as well or better. This has to be reported as it is.")
+print("="*70)
+
+pd.DataFrame({"model": boot_model, "baseline": boot_base,
+              "difference": boot_diff}).to_csv("scrum27_bootstrap.csv", index=False)
+print("Saved every resampled result to scrum27_bootstrap.csv")
+
+# ---------------------------------------------------------------
+# 9d. HOW MUCH DOES THE ANSWER DEPEND ON THE RANDOM SEED?
+# ---------------------------------------------------------------
+#
+# The bootstrap above asks what happens if the TEST YEAR had been different.
+# This asks something separate: what happens if the TRAINING had gone
+# slightly differently.
+#
+# XGBoost is not fully deterministic here. subsample and colsample_bytree
+# draw at random, and tree_method="hist" splits work across threads, so the
+# order they finish in is not fixed. Two runs of identical code on identical
+# data give slightly different trees.
+#
+# That would not matter for a stable measure. It matters a great deal here,
+# because the top 200 is decided by a handful of enormous contracts: a small
+# change in the model reshuffles which of them make the cut, and the total
+# moves by millions. Running several seeds turns that hidden wobble into a
+# measured range that can be reported.
+
+SEEDS = [42, 7, 123, 2024, 99]
+
+print(f"\n{'='*70}")
+print(f"DOES THE ANSWER DEPEND ON THE RANDOM SEED? {len(SEEDS)} training runs")
+print("="*70)
+
+
+def capture_for_seed(seed):
+    """Train all three models with this seed, return top-K dollars captured."""
+    ma = make_regressor(seed)
+    ma.fit(X_train, train["target_dollars"])
+    pa = ma.predict(X_test)
+
+    mb = make_classifier(seed)
+    mb.fit(X_train, train["target_grew"])
+    pb = mb.predict_proba(X_test)[:, 1]
+
+    g = train[train["target_grew"] == 1]
+    mc = make_regressor(seed, max_depth=5)
+    ls = np.log(g["target_dollars"].values)
+    mc.fit(g[FEATURES], ls)
+    sm = float(np.mean(np.exp(ls - mc.predict(g[FEATURES]))))
+    pc = pb * np.exp(mc.predict(X_test)) * sm
+
+    return {
+        "seed": seed,
+        "Model A: dollars direct": top_k_dollars(pa, y_test, TOP_K),
+        "Model C: two-part": top_k_dollars(pc, y_test, TOP_K),
+        "smearing": sm,
+    }
+
+
+seed_runs = []
+for s in SEEDS:
+    print(f"  training with seed {s}...")
+    seed_runs.append(capture_for_seed(s))
+
+seed_df = pd.DataFrame(seed_runs)
+base_capture = top_k_dollars(score_base, y_test, TOP_K)
+
+print(f"\n{'':<26}{'typical':>10}{'lowest':>11}{'highest':>11}{'spread':>11}")
+for col in ["Model A: dollars direct", "Model C: two-part"]:
+    v = seed_df[col].values
+    print(f"{col:<26}{'$' + format(np.median(v)/1e6, ',.1f') + 'M':>10}"
+          f"{'$' + format(v.min()/1e6, ',.1f') + 'M':>11}"
+          f"{'$' + format(v.max()/1e6, ',.1f') + 'M':>11}"
+          f"{'$' + format((v.max()-v.min())/1e6, ',.1f') + 'M':>11}")
+print(f"{'Baseline: biggest first':<26}{'$' + format(base_capture/1e6, ',.1f') + 'M':>10}"
+      f"      no randomness, so always the same")
+
+a_v = seed_df["Model A: dollars direct"].values
+c_v = seed_df["Model C: two-part"].values
+
+print(f"\nSmearing factor ranged from {seed_df['smearing'].min():.3f} "
+      f"to {seed_df['smearing'].max():.3f}.")
+
+worst_model = min(a_v.min(), c_v.min())
+if worst_model > base_capture:
+    print(f"Every run of both models beat the baseline's "
+          f"${base_capture/1e6:,.1f}M, so the advantage does not depend on "
+          f"the seed.")
+else:
+    print(f"At least one run fell to ${worst_model/1e6:,.1f}M, below the "
+          f"baseline's ${base_capture/1e6:,.1f}M. The advantage is not")
+    print("robust to the training seed and must be reported that way.")
+
+# Model A and Model C get compared a lot above. Say plainly whether a single
+# run can actually tell them apart.
+if min(a_v.max(), c_v.max()) > max(a_v.min(), c_v.min()):
+    print("\nThe ranges for Model A and Model C overlap, so a single run")
+    print("cannot say which ranks better. Any claim that one beats the other")
+    print("needs the average across seeds, not one number.")
+else:
+    better = "A" if np.median(a_v) > np.median(c_v) else "C"
+    print(f"\nThe ranges do not overlap: Model {better} ranks better across "
+          f"every seed tried.")
+
+print("="*70)
+seed_df.to_csv("scrum27_seeds.csv", index=False)
+print("Saved the per-seed results to scrum27_seeds.csv")
 
 print("\nFeature importance (model A, by gain):")
 imp = pd.Series(model_a.get_booster().get_score(importance_type="gain"))
