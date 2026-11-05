@@ -12,6 +12,7 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlalchemy import create_engine, text
+import csv
 import os
 
 DB_URL = os.environ.get(
@@ -29,6 +30,37 @@ def rows(sql, **params):
     with engine.connect() as conn:
         result = conn.execute(text(sql), params)
         return [dict(r._mapping) for r in result]
+
+
+# ------------------------------------------------------------------
+# How much the headline number moves between training runs
+# ------------------------------------------------------------------
+#
+# Training is not repeatable: XGBoost splits work across threads and the
+# order they finish in is not fixed, so the same code on the same data gives
+# slightly different trees. The top 200 is decided by a handful of enormous
+# contracts, so that small difference moves the total by millions.
+#
+# train_model.py measures this across five seeds and writes the results to
+# scrum27_seeds.csv. The page reads the range from here so it can say that
+# the figure on screen is one run, not the answer.
+
+SEEDS_CSV = os.path.join(HERE, "..", "scrum27_seeds.csv")
+
+
+def seed_range():
+    """Lowest and highest top-200 capture for the watchlist model, or None."""
+    try:
+        with open(SEEDS_CSV, newline="") as f:
+            rows_ = list(csv.DictReader(f))
+        col = next(c for c in rows_[0] if c.startswith("Model C"))
+        values = [float(r[col]) for r in rows_]
+        if len(values) < 2:
+            return None
+        return {"low": min(values), "high": max(values), "runs": len(values)}
+    except Exception:
+        # The page works without it; it just says less.
+        return None
 
 
 # ------------------------------------------------------------------
@@ -66,6 +98,7 @@ def summary(top_k: int = 200):
 
     return {
         "top_k": top_k,
+        "seed_range": seed_range(),
         "test_contracts": int(test_totals["contracts"] or 0),
         "test_total_growth": float(test_totals["total_growth"] or 0),
         "watchlist_captured": float(captured["actual"] or 0),

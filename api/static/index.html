@@ -55,6 +55,8 @@
   .claim.best .track > i { background: var(--accent); }
   .verdict { margin-top: 14px; font-size: 14px; color: var(--ink-2); }
   .verdict b { color: var(--ink); }
+  .caveat { display: block; margin-top: 9px; padding-left: 11px;
+            border-left: 3px solid var(--line-strong); color: var(--ink-2); font-size: 13px; }
 
   /* ---- the capture curve ---- */
   .result-grid { display: grid; grid-template-columns: minmax(0,1fr) 470px; gap: 34px; align-items: start; }
@@ -315,11 +317,27 @@ async function loadStats() {
   const liftPct = s.baseline_captured ? (lift / s.baseline_captured * 100) : 0;
   const reached = s.ceiling ? (s.watchlist_captured / s.ceiling * 100) : 0;
 
+  // Training is not repeatable, so the figure above is one run. Saying so
+  // here matters: the README is explicit that a single number from this
+  // pipeline should not be quoted, and the page should not quote one either.
+  // Stated in dollars, not as a percentage over the baseline. The range is
+  // measured once and saved; the baseline is read live. Dividing one by the
+  // other would print nonsense any time the two came from different runs.
+  let caveat = "";
+  if (s.seed_range) {
+    caveat = ` <span class="caveat">This is one training run. Training is not
+      repeatable, so the figure moves: across ${s.seed_range.runs} runs on the
+      same data the top 200 captured between
+      <b>${dollars(s.seed_range.low)}</b> and
+      <b>${dollars(s.seed_range.high)}</b>. Treat that range as the result
+      rather than any single number here.</span>`;
+  }
+
   document.getElementById("verdict").innerHTML =
-    `So the list finds <b>${dollars(lift)} more</b> than simply picking the biggest contracts —
-     about <b>${liftPct.toFixed(0)}% better</b>. Nobody can do better than the third line,
-     because that would mean knowing the future. This list gets
-     <b>${reached.toFixed(0)}%</b> of the way there.`;
+    `On this run the list finds <b>${dollars(lift)} more</b> than simply picking the
+     biggest contracts — about <b>${liftPct.toFixed(0)}% better</b>, reaching
+     <b>${reached.toFixed(0)}%</b> of what the third line shows. Nobody can beat that
+     third line, because it would mean knowing the future.${caveat}`;
 }
 
 // ---------------------------------------------------------------
@@ -327,7 +345,11 @@ async function loadStats() {
 // with nothing to download.
 // ---------------------------------------------------------------
 async function loadCurve() {
-  const d = await (await fetch("/api/curve?n=1000")).json();
+  // 500, not 1000. The two lines converge past about 800 contracts, so the
+  // right-hand third of a wider chart is dead space that reads as "no
+  // advantage" - and this is a top-200 watchlist, not a way to rank all
+  // 109,000. Showing less makes the part that matters twice as large.
+  const d = await (await fetch("/api/curve?n=500")).json();
   const svg = document.getElementById("curve");
   if (!d.model.length) { svg.remove(); return; }
 
@@ -358,20 +380,27 @@ async function loadCurve() {
 
   const parts = [];
 
-  // horizontal grid lines and the money scale
-  const steps = 4;
-  for (let i = 0; i <= steps; i++) {
-    const v = maxY * i / steps, y = Y(v);
+  // Grid lines on round numbers. Dividing the maximum into four gives ticks
+  // like $327M and $245M, which nobody reads as a scale.
+  const niceStep = span => {
+    const raw = span / 4;
+    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    return [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw) || mag * 10;
+  };
+  const step = niceStep(maxY);
+  for (let v = 0; v <= maxY + step * 0.01; v += step) {
+    const y = Y(v);
     parts.push(el("line", { x1: L, x2: L + pw, y1: y, y2: y, class: "ax-line" }));
     parts.push(el("text", { x: L - 7, y: y + 3, "text-anchor": "end", class: "ax-text" },
-                  "$" + (v / 1e6).toFixed(0) + "M"));
+                  "$" + Math.round(v / 1e6) + "M"));
   }
 
   // the contracts-checked scale
-  [0, 250, 500, 750, 1000].filter(k => k <= maxX).forEach(k => {
+  const xStep = niceStep(maxX * 4 / 5);
+  for (let k = 0; k <= maxX; k += xStep) {
     parts.push(el("text", { x: X(k), y: T + ph + 16, "text-anchor": "middle", class: "ax-text" },
-                  k.toLocaleString()));
-  });
+                  Math.round(k).toLocaleString()));
+  }
   parts.push(el("text", { x: L + pw / 2, y: H - 8, "text-anchor": "middle", class: "ax-text" },
                 "contracts checked, reading from the top of the list"));
 
@@ -414,10 +443,15 @@ async function loadCurve() {
    .sort((a, b) => a.y - b.y);
 
   for (let i = 1; i < tags.length; i++) {
-    if (tags[i].y - tags[i - 1].y < 13) tags[i].y = tags[i - 1].y + 13;
+    if (tags[i].y - tags[i - 1].y < 16) tags[i].y = tags[i - 1].y + 16;
   }
-  tags.forEach(t => parts.push(
-    el("text", { x: t.x, y: Math.min(t.y, T + ph - 2), "text-anchor": "end", class: t.cls }, t.label)));
+  // A halo in the page colour, painted behind the glyphs, so a label sitting
+  // on top of a line is still readable.
+  tags.forEach(t => parts.push(el("text", {
+    x: t.x, y: Math.min(t.y, T + ph - 2), "text-anchor": "end", class: t.cls,
+    stroke: "var(--surface)", "stroke-width": 3.5, "stroke-linejoin": "round",
+    "paint-order": "stroke",
+  }, t.label)));
 
   svg.replaceChildren(...parts);
 }
