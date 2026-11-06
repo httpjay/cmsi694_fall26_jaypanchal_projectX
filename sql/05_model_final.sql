@@ -25,9 +25,33 @@
 -- Run after: 04_award_attrs.sql
 -- ============================================================================
 
-DROP TABLE IF EXISTS model_final;
+-- ---------------------------------------------------------------------------
+-- Agency-agnostic. Run with no variables and this behaves exactly as before,
+-- building the Veterans Affairs tables. To run the same pipeline for another
+-- agency, pass a prefix and the raw table:
+--
+--   psql projectx -v px=usda_ -v src=usda_contracts_raw -f sql/<this file>
+--
+-- SCRUM-28 added this. Nothing about the method changes between agencies -
+-- that is the point of the test.
+-- ---------------------------------------------------------------------------
+\if :{?px}
+\else
+  \set px ''
+\endif
+\if :{?src}
+\else
+  \set src 'va_contracts_raw'
+\endif
+\set t_summary :px 'contract_summary'
+\set t_model   :px 'model_data'
+\set t_growth  :px 'growth_12mo'
+\set t_attrs   :px 'award_attrs'
+\set t_final   :px 'model_final'
 
-CREATE TABLE model_final AS
+DROP TABLE IF EXISTS :t_final;
+
+CREATE TABLE :t_final AS
 SELECT
   m.contract_award_unique_key,
   g.award_date,
@@ -50,10 +74,10 @@ SELECT
   -- which half of the experiment this contract belongs to
   CASE WHEN g.award_date <= DATE '2017-09-30' THEN 'train' ELSE 'test' END AS split
 
-FROM model_data m
-JOIN growth_12mo g USING (contract_award_unique_key)
-LEFT JOIN award_attrs a USING (contract_award_unique_key)
+FROM :t_model m
+JOIN :t_growth g USING (contract_award_unique_key)
+LEFT JOIN :t_attrs a USING (contract_award_unique_key)
 WHERE g.award_date <= DATE '2018-09-30';
 
-CREATE INDEX ON model_final (contract_award_unique_key);
-CREATE INDEX ON model_final (split);
+CREATE INDEX ON :t_final (contract_award_unique_key);
+CREATE INDEX ON :t_final (split);

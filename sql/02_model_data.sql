@@ -37,9 +37,33 @@
 -- Run after: 01_contract_summary.sql
 -- ============================================================================
 
-DROP TABLE IF EXISTS model_data;
+-- ---------------------------------------------------------------------------
+-- Agency-agnostic. Run with no variables and this behaves exactly as before,
+-- building the Veterans Affairs tables. To run the same pipeline for another
+-- agency, pass a prefix and the raw table:
+--
+--   psql projectx -v px=usda_ -v src=usda_contracts_raw -f sql/<this file>
+--
+-- SCRUM-28 added this. Nothing about the method changes between agencies -
+-- that is the point of the test.
+-- ---------------------------------------------------------------------------
+\if :{?px}
+\else
+  \set px ''
+\endif
+\if :{?src}
+\else
+  \set src 'va_contracts_raw'
+\endif
+\set t_summary :px 'contract_summary'
+\set t_model   :px 'model_data'
+\set t_growth  :px 'growth_12mo'
+\set t_attrs   :px 'award_attrs'
+\set t_final   :px 'model_final'
 
-CREATE TABLE model_data AS
+DROP TABLE IF EXISTS :t_model;
+
+CREATE TABLE :t_model AS
 SELECT
   contract_award_unique_key,
 
@@ -60,12 +84,12 @@ SELECT
   unplanned_growth / original_award                  AS target_ratio,
   CASE WHEN unplanned_growth > 0 THEN 1 ELSE 0 END   AS target_grew
 
-FROM contract_summary
+FROM :t_summary
 WHERE has_original_award
   AND award_or_idv_flag = 'AWARD'
   AND original_award > 1000;
 
-CREATE INDEX ON model_data (contract_award_unique_key);
+CREATE INDEX ON :t_model (contract_award_unique_key);
 
 -- Expected: 304,789 rows.
 --   359,060  all contracts

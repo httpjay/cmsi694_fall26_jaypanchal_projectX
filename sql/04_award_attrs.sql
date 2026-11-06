@@ -24,16 +24,40 @@
 -- Run after: 03_growth_12mo.sql
 -- ============================================================================
 
-DROP TABLE IF EXISTS award_attrs;
+-- ---------------------------------------------------------------------------
+-- Agency-agnostic. Run with no variables and this behaves exactly as before,
+-- building the Veterans Affairs tables. To run the same pipeline for another
+-- agency, pass a prefix and the raw table:
+--
+--   psql projectx -v px=usda_ -v src=usda_contracts_raw -f sql/<this file>
+--
+-- SCRUM-28 added this. Nothing about the method changes between agencies -
+-- that is the point of the test.
+-- ---------------------------------------------------------------------------
+\if :{?px}
+\else
+  \set px ''
+\endif
+\if :{?src}
+\else
+  \set src 'va_contracts_raw'
+\endif
+\set t_summary :px 'contract_summary'
+\set t_model   :px 'model_data'
+\set t_growth  :px 'growth_12mo'
+\set t_attrs   :px 'award_attrs'
+\set t_final   :px 'model_final'
 
-CREATE TABLE award_attrs AS
+DROP TABLE IF EXISTS :t_attrs;
+
+CREATE TABLE :t_attrs AS
 SELECT
   contract_award_unique_key,
   MAX(CASE WHEN NULLIF(parent_award_id_piid, '') IS NOT NULL THEN 1 ELSE 0 END) AS under_umbrella,
   MAX(NULLIF(period_of_performance_start_date, ''))::date           AS pop_start,
   MAX(NULLIF(period_of_performance_potential_end_date, ''))::date   AS pop_potential_end
-FROM va_contracts_raw
+FROM :src
 WHERE action_type_code IS NULL   -- original award rows only
 GROUP BY contract_award_unique_key;
 
-CREATE INDEX ON award_attrs (contract_award_unique_key);
+CREATE INDEX ON :t_attrs (contract_award_unique_key);
