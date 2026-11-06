@@ -75,6 +75,70 @@ not be quoted, including by its author.
 
 ---
 
+## Does it work outside Veterans Affairs?
+
+Everything above is one agency. A model that only works on hospital contracts
+is a finding about hospitals, not about federal contracting, so the same
+pipeline was run unchanged against the **Department of Agriculture** —
+229,029 transactions over the same three fiscal years, giving 77,699 usable
+contracts against Veterans Affairs' 242,775.
+
+Nothing about the method was adjusted. The `sql/` scripts take the raw table
+and an output prefix, so both agencies are built by the same five files.
+
+Measured on Agriculture's test year: 38,254 contracts holding $123.6M of
+unplanned growth, 4.4% of them growing.
+
+| Ranking method | Contracts that grew (of 200) | Growth captured |
+|---|---|---|
+| Random | 10 | $0.2M |
+| Biggest award first (baseline) | 14 | $11.2M |
+| **Model trained on Veterans Affairs** | **47** | **$18.2M** |
+| Model trained on Agriculture | 63 | $20.7M |
+| Perfect knowledge (ceiling) | 200 | $125.1M |
+
+**The model transfers.** Trained on Veterans Affairs and never shown a single
+Agriculture contract, it finds $7.1M more than the baseline — 63% better —
+and reaches 88% of what a model trained on Agriculture's own earlier year
+achieves. The method transfers too: retrained locally it beats the baseline
+by $9.5M.
+
+Three things make this more interesting than a single pass of the test:
+
+**The overlap is only partial.** 62% of Agriculture's test contracts use an
+industry code that ever appears in Veterans Affairs, and 69% a product or
+service code; contract pricing type and competition type overlap fully. So
+the transferred model is working on substantially unfamiliar ground. It is
+not recognising industries it has memorised — it is using the shape of a
+contract: how long it runs, how it was competed, how its price is set.
+
+**The advantage is larger away from home.** On Veterans Affairs the model
+beats the baseline by about 20%; on Agriculture by 63%. Not because the model
+is better there, but because the baseline is worse: "check the biggest
+contracts" reaches 24.9% of the ceiling at Veterans Affairs and only 8.9% at
+Agriculture. Where contract size predicts growth less well, there is more for
+a model to add.
+
+**Retraining still helps, mostly on count.** The local model finds 63 growing
+contracts to the transferred model's 47, but only $2.5M more in dollars. It
+is better at finding growth, not much better at finding the large growth.
+
+These are single runs, and training is not repeatable (see **Reproducibility**),
+so treat a few million either way as noise. The direction is not noise: every
+comparison here is far outside that range.
+
+To reproduce:
+
+```bash
+python3 Data/load_agency.py Data/usda usda_contracts_raw
+for f in sql/0*.sql; do
+  psql projectx -v ON_ERROR_STOP=1 -v px=usda_ -v src=usda_contracts_raw -f "$f"
+done
+python3 compare_agencies.py usda_model_final "Agriculture"
+```
+
+---
+
 ## Getting the data
 
 The raw data is not stored in this repository because the files are too large.
@@ -259,7 +323,8 @@ is the highest at 5.1%; July and August are lowest at 2.8%.
 
 ## Limitations
 
-- One agency, three fiscal years. Patterns may not transfer to other agencies.
+- Two agencies, three fiscal years each. The result holds on both, but two
+  is not many, and both are civilian agencies buying services.
 - The 12-month window is a choice. Six or 24 months were not tested.
 - Growth is predicted, not impropriety. Most contract growth is legitimate.
 - The model reaches about a third of what a perfect ranking would capture.
@@ -273,10 +338,14 @@ is the highest at 5.1%; July and August are lowest at 2.8%.
 ## Repository layout
 
 ```
-Data/              raw award files (not committed)
-sql/               table-building scripts, run in order
-train_model.py     trains and scores, writes the watchlist table
-api/main.py        serving layer
-api/static/        interface
-docs/              report and findings
+Data/                  raw award files (not committed)
+Data/load_agency.py    loads any agency's files into its own raw table
+sql/                   table-building scripts, run in order; take an agency
+                       prefix so the same five files serve every agency
+models.py              model settings, shared by the scripts below
+train_model.py         trains and scores, writes the watchlist table
+compare_agencies.py    the second-agency test
+api/main.py            serving layer
+api/static/            interface
+docs/                  report and findings
 ```

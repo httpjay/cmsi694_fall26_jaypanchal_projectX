@@ -38,9 +38,33 @@
 -- Run first. Requires: va_contracts_raw (see Data/load_data.sh)
 -- ============================================================================
 
-DROP TABLE IF EXISTS contract_summary;
+-- ---------------------------------------------------------------------------
+-- Agency-agnostic. Run with no variables and this behaves exactly as before,
+-- building the Veterans Affairs tables. To run the same pipeline for another
+-- agency, pass a prefix and the raw table:
+--
+--   psql projectx -v px=usda_ -v src=usda_contracts_raw -f sql/<this file>
+--
+-- SCRUM-28 added this. Nothing about the method changes between agencies -
+-- that is the point of the test.
+-- ---------------------------------------------------------------------------
+\if :{?px}
+\else
+  \set px ''
+\endif
+\if :{?src}
+\else
+  \set src 'va_contracts_raw'
+\endif
+\set t_summary :px 'contract_summary'
+\set t_model   :px 'model_data'
+\set t_growth  :px 'growth_12mo'
+\set t_attrs   :px 'award_attrs'
+\set t_final   :px 'model_final'
 
-CREATE TABLE contract_summary AS
+DROP TABLE IF EXISTS :t_summary;
+
+CREATE TABLE :t_summary AS
 SELECT
   contract_award_unique_key,
 
@@ -80,9 +104,9 @@ SELECT
   MAX(extent_competed)                   AS extent_competed,
   MAX(usaspending_permalink)             AS permalink
 
-FROM va_contracts_raw
+FROM :src
 GROUP BY contract_award_unique_key;
 
-CREATE INDEX ON contract_summary (contract_award_unique_key);
+CREATE INDEX ON :t_summary (contract_award_unique_key);
 
 -- Expected: 359,060 rows.

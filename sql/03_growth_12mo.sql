@@ -26,14 +26,38 @@
 -- Run after: 01_contract_summary.sql
 -- ============================================================================
 
-DROP TABLE IF EXISTS growth_12mo;
+-- ---------------------------------------------------------------------------
+-- Agency-agnostic. Run with no variables and this behaves exactly as before,
+-- building the Veterans Affairs tables. To run the same pipeline for another
+-- agency, pass a prefix and the raw table:
+--
+--   psql projectx -v px=usda_ -v src=usda_contracts_raw -f sql/<this file>
+--
+-- SCRUM-28 added this. Nothing about the method changes between agencies -
+-- that is the point of the test.
+-- ---------------------------------------------------------------------------
+\if :{?px}
+\else
+  \set px ''
+\endif
+\if :{?src}
+\else
+  \set src 'va_contracts_raw'
+\endif
+\set t_summary :px 'contract_summary'
+\set t_model   :px 'model_data'
+\set t_growth  :px 'growth_12mo'
+\set t_attrs   :px 'award_attrs'
+\set t_final   :px 'model_final'
 
-CREATE TABLE growth_12mo AS
+DROP TABLE IF EXISTS :t_growth;
+
+CREATE TABLE :t_growth AS
 WITH first_dates AS (
   -- The award date is the earliest action on the contract.
   SELECT contract_award_unique_key,
          MIN(action_date::date) AS award_date
-  FROM va_contracts_raw
+  FROM :src
   GROUP BY contract_award_unique_key
 )
 SELECT
@@ -43,8 +67,8 @@ SELECT
     WHERE r.action_type_code IN ('B','D','A','L')
       AND r.action_date::date <= f.award_date + INTERVAL '12 months'
   ), 0) AS growth_12mo
-FROM va_contracts_raw r
+FROM :src r
 JOIN first_dates f USING (contract_award_unique_key)
 GROUP BY r.contract_award_unique_key, f.award_date;
 
-CREATE INDEX ON growth_12mo (contract_award_unique_key);
+CREATE INDEX ON :t_growth (contract_award_unique_key);

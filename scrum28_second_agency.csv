@@ -1,0 +1,6 @@
+method,dollars,contracts_grew,pct_of_ceiling
+Random,245080.0,10,0.2
+Baseline: biggest award first,11175797.23,14,8.9
+Model trained on Veterans Affairs,18227126.39,47,14.6
+Model trained on Agriculture,20689364.54,63,16.5
+Perfect knowledge (ceiling),125112534.64999999,200,100.0
