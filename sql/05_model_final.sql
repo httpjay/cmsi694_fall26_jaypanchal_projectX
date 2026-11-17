@@ -67,6 +67,11 @@ SELECT
   a.under_umbrella,
   (a.pop_potential_end - a.pop_start) AS planned_duration_days,
 
+  -- Carried for grouping, not as a feature. The model never sees it: an
+  -- identifier would let it memorise individual agreements rather than learn
+  -- anything about the shape of a contract.
+  a.parent_award_id,
+
   -- targets
   g.growth_12mo AS target_dollars,
   CASE WHEN g.growth_12mo > 0 THEN 1 ELSE 0 END AS target_grew,

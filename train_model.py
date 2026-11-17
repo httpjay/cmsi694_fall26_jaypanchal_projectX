@@ -600,11 +600,34 @@ def explain_one(i):
 
 watchlist["explanation"] = [explain_one(i) for i in watchlist.index]
 
+# ---------------------------------------------------------------
+# 11c. HOW MANY SIBLINGS DOES EACH CONTRACT HAVE ON THIS LIST?
+# ---------------------------------------------------------------
+#
+# Orders placed against the same umbrella agreement are separate contracts
+# and are scored separately, which is correct. But a reviewer working down
+# the list sees the consequence: one vendor can occupy five of the first ten
+# slots. Recording how many siblings each contract has on the list lets the
+# interface say so, and lets the effect be measured rather than guessed.
+
+watchlist["n_siblings_on_list"] = (
+    watchlist.groupby("parent_award_id")["parent_award_id"].transform("size")
+    .where(watchlist["parent_award_id"].notna(), 1) - 1
+).astype(int)
+
+# Counted over the whole saved list, because that is what the column means
+# and what the interface shows. group_by_parent.py reports crowding WITHIN
+# the top K, which is a smaller number and a different question.
+shared = int((watchlist.head(TOP_K)["n_siblings_on_list"] > 0).sum())
+print(f"\nOf the top {TOP_K}, {shared} contracts have at least one sibling "
+      f"order\nsomewhere in the saved list of {len(watchlist):,}.")
+
 cols = ["rank", "contract_award_unique_key", "recipient_name",
         "award_date", "original_award",
         "predicted_dollars", "predicted_chance", "predicted_size_if_grows",
         "naics_code", "product_service_code", "extent_competed",
         "contract_pricing_type", "planned_duration_days", "under_umbrella",
+        "parent_award_id", "n_siblings_on_list",
         "target_dollars", "target_grew", "explanation"]
 
 watchlist[cols].to_sql("watchlist", engine, if_exists="replace", index=False)

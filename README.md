@@ -139,6 +139,65 @@ python3 compare_agencies.py usda_model_final "Agriculture"
 
 ---
 
+## Should orders under one agreement be grouped?
+
+Looking at the finished list, one vendor often holds several of the first
+twenty places. Oracle Health Government Services appeared five times in the
+top ten. Every reader who saw the list asked the same question: is the
+reviewer wasting slots on the same thing over and over?
+
+Orders placed against an umbrella agreement are separate contracts, awarded
+and modified separately, and the model scores each on its own. That is
+correct. But correctness is not the question — the question is whether a
+reviewer's 200 slots are being spent well.
+
+Measured three ways on the test year, with `group_by_parent.py`:
+
+| | Contracts read | Growth found |
+|---|---|---|
+| As it stands | 200 | **$65.9M** |
+| Deduplicated: one contract per agreement | 200 | $61.7M |
+| By agreement: everything under the top 200 agreements | 2,430 | $126.6M |
+
+**Deduplicating loses $4.2M.** The intuition was wrong. The repeated
+agreements are not crowding out better contracts; their sibling orders were
+genuinely growing:
+
+| Agreement | Slots held | How many grew |
+|---|---|---|
+| Siemens Medical Solutions | 8 | 4 |
+| Atlas Research | 4 | 3 |
+| Oracle Health Government Services | 6 | 2 |
+| Philips North America | 6 | 1 |
+| General Electric | 4 | 1 |
+
+Siemens holds eight slots and half of them grew. Collapsing those eight rows
+into one would have discarded three contracts that really did cost more.
+
+The finding underneath is that **growth clusters by agreement**: when one
+order under an umbrella grows, its siblings are more likely to grow as well.
+The repetition that looked like noise carries information.
+
+So the watchlist keeps one row per contract and tells the reviewer what they
+are looking at — each row shows how many sibling orders from the same
+agreement appear on the list. Grouping is a reading aid, not a change to the
+ranking. 61 of the top 200 share an agreement with at least one other
+contract on the list; the 200 sit under 159 distinct agreements.
+
+The third row of the table is not a fair comparison and is marked as such:
+200 agreements contained 2,430 contracts, so finding more is expected. It is
+reported because it shows how concentrated the money is — 46% of the test
+year's total growth sits under those 200 agreements.
+
+**A lead this opens up.** In a live tool, the fact that an earlier order
+under an agreement has already grown would be known on the day a later order
+is signed. "Has a sibling that already grew" would therefore be a legitimate
+award-time feature, and on this evidence a strong one. It is not used here,
+and testing it on a historical holdout needs care to avoid leaking across the
+train/test boundary.
+
+---
+
 ## Getting the data
 
 The raw data is not stored in this repository because the files are too large.
@@ -319,6 +378,11 @@ dollars from under 7% of contracts.
 **Award month predicts growth.** October, the start of the federal budget year,
 is the highest at 5.1%; July and August are lowest at 2.8%.
 
+**Growth clusters by agreement.** Orders under the same umbrella agreement
+tend to grow together. Deduplicating the watchlist so each agreement appears
+once costs $4.2M of the $65.9M found, because the repeated orders were really
+growing — see the grouping section above.
+
 ---
 
 ## Limitations
@@ -345,6 +409,7 @@ sql/                   table-building scripts, run in order; take an agency
 models.py              model settings, shared by the scripts below
 train_model.py         trains and scores, writes the watchlist table
 compare_agencies.py    the second-agency test
+group_by_parent.py     the sibling-agreement grouping test
 api/main.py            serving layer
 api/static/            interface
 docs/                  report and findings

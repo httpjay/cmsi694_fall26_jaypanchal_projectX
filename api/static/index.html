@@ -111,6 +111,7 @@
   .company.unknown { color: var(--ink-3); font-weight: 400; font-style: italic; }
   .key { font-size: 11px; color: var(--ink-3); max-width: 290px; overflow: hidden;
          text-overflow: ellipsis; white-space: nowrap; }
+  .siblings { font-size: 11px; color: var(--guess); margin-top: 2px; }
   .grew { color: var(--actual); font-weight: 600; }
   .nogrew { color: var(--ink-3); }
   .running { color: var(--ink-2); font-weight: 600; }
@@ -485,6 +486,7 @@ async function loadRows() {
       <td class="who">
         <div class="company${r.recipient_name ? '' : ' unknown'}">${r.recipient_name || "company not recorded"}</div>
         <div class="key mono">${r.contract_award_unique_key}</div>
+        ${r.n_siblings_on_list > 0 ? `<div class="siblings">+${r.n_siblings_on_list} more order${r.n_siblings_on_list > 1 ? "s" : ""} on this list under the same agreement</div>` : ""}
       </td>
       <td class="num mono">${moneyShort(r.original_award)}</td>
       <td class="num mono guess">${moneyShort(r.predicted_dollars)}</td>
@@ -570,6 +572,7 @@ async function showDetail(key) {
         <div class="kv"><dt>Industry code</dt><dd class="mono">${c.naics_code ?? "—"}</dd></div>
         <div class="kv"><dt>What is being bought</dt><dd class="mono">${c.product_service_code ?? "—"}</dd></div>
         <div class="kv"><dt>Sits under a larger agreement</dt><dd>${c.under_umbrella ? "Yes" : "No"}</dd></div>
+        ${c.n_siblings_on_list > 0 ? `<div class="kv"><dt>Other orders from the same agreement on this list</dt><dd class="mono">${c.n_siblings_on_list}</dd></div>` : ""}
       </dl>
 
       <div class="section-label guess">What the model guessed — an estimate, not a finding</div>
