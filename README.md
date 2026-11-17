@@ -287,6 +287,39 @@ confirming all three were caught. A check that can only pass is worth nothing.
 compare by eye and hardcodes Veterans Affairs' row counts. It is kept for
 poking at the data by hand.
 
+### 6. Build a copy other people can open
+
+```bash
+python3 -m uvicorn api.main:app     # in one terminal
+python3 make_static_site.py         # in another
+```
+
+Writes `docs/index.html`: one file, about 1.4 MB, with the data inside it. No
+server, no database, nothing to install. Open it from a hard disk, email it,
+or let GitHub Pages serve the `docs` folder.
+
+**Why a saved copy rather than hosting the real thing.** Hosting `api/main.py`
+means hosting PostgreSQL with it: an account, a monthly bill, and a database
+that has to stay awake. The data stops in September 2018 and will never
+change. That is a lot of machinery to keep a fixed answer available. The live
+version is the one to run while working on the project; this is the one to
+hand to somebody else.
+
+**One interface, not two.** The page is not rewritten. `api/static/index.html`
+is used exactly as it is, with two things added: the answers the five
+endpoints would give, saved as data, and a short piece of JavaScript that
+answers `fetch()` from it. A change to the interface shows up in both versions
+the next time the script runs, and cannot show up in only one of them.
+
+**The honest cost, and what is done about it.** The filtering, searching and
+paging that `api/main.py` does in SQL have to be done again, in JavaScript,
+for the saved copy. Two pieces of code doing one job is exactly how the two
+versions would quietly start disagreeing — and the way that would show up is a
+reviewer reading a list that differs from the real one. So the script does not
+take it on trust. Before writing the file it asks the live API for 36 filter
+combinations, asks the saved copy the same questions, and **refuses to write
+anything if a single answer differs.**
+
 ---
 
 ## Architecture
@@ -439,6 +472,8 @@ train_model.py         trains and scores, writes the watchlist table
 compare_agencies.py    the second-agency test
 group_by_parent.py     the sibling-agreement grouping test
 check_pipeline.py      eleven pass/fail checks over the built tables
+make_static_site.py    builds docs/index.html, the copy with no server
+docs/index.html        that copy; what GitHub Pages serves
 api/main.py            serving layer
 api/static/            interface
 docs/                  report and findings
