@@ -15,6 +15,7 @@
 --
 -- Columns:
 --   under_umbrella      1 if the contract sits under a larger parent award
+--   parent_award_id     which parent, so sibling orders can be grouped
 --   pop_start           planned start of the period of performance
 --   pop_potential_end   planned end if every option is exercised
 --
@@ -54,6 +55,12 @@ CREATE TABLE :t_attrs AS
 SELECT
   contract_award_unique_key,
   MAX(CASE WHEN NULLIF(parent_award_id_piid, '') IS NOT NULL THEN 1 ELSE 0 END) AS under_umbrella,
+
+  -- The parent's actual identity, not just whether it has one. Several orders
+  -- placed against the same umbrella agreement share this value, which is what
+  -- makes it possible to tell that one vendor is filling five slots on a
+  -- reviewer's list of 200. under_umbrella alone cannot see that.
+  MAX(NULLIF(parent_award_id_piid, ''))                             AS parent_award_id,
   MAX(NULLIF(period_of_performance_start_date, ''))::date           AS pop_start,
   MAX(NULLIF(period_of_performance_potential_end_date, ''))::date   AS pop_potential_end
 FROM :src

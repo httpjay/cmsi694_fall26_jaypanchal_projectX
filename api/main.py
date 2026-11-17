@@ -147,6 +147,7 @@ def watchlist(
                    predicted_dollars, predicted_chance, naics_code,
                    product_service_code, extent_competed, contract_pricing_type,
                    planned_duration_days, under_umbrella,
+                   parent_award_id, n_siblings_on_list,
                    target_dollars, target_grew,
                    SUM(target_dollars) OVER (ORDER BY "rank") AS running_total
             FROM watchlist
