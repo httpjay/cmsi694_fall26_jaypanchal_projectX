@@ -259,6 +259,34 @@ python3 -m uvicorn api.main:app
 
 Open http://127.0.0.1:8000
 
+### 5. Check the pipeline
+
+```bash
+python3 check_pipeline.py                      # Veterans Affairs
+python3 check_pipeline.py usda_ "Agriculture"  # any other agency
+```
+
+Eleven checks, each printed as `pass`, `FAIL` or `skip`. A failure says what is
+wrong and why it matters. The script exits with a non-zero status when
+anything fails, so it can be wired into a build later.
+
+Every check guards against something that actually went wrong in this project
+at least once: obligations loading as text, a modelling table built off the
+wrong source, a leakage column reaching the model, a contract landing in both
+halves of the train/test split. Exact row counts are deliberately **not**
+checked — they differ per agency and change whenever the source files are
+refreshed, so asserting them would mean a test that fails for the wrong
+reason. Everything checked is a relationship that must hold whatever the
+numbers are.
+
+The checks were themselves tested by breaking the database on purpose — adding
+a leakage column, corrupting `target_grew`, duplicating a watchlist rank — and
+confirming all three were caught. A check that can only pass is worth nothing.
+
+`sql/99_verify.sql` does something similar but prints numbers for a person to
+compare by eye and hardcodes Veterans Affairs' row counts. It is kept for
+poking at the data by hand.
+
 ---
 
 ## Architecture
@@ -410,6 +438,7 @@ models.py              model settings, shared by the scripts below
 train_model.py         trains and scores, writes the watchlist table
 compare_agencies.py    the second-agency test
 group_by_parent.py     the sibling-agreement grouping test
+check_pipeline.py      eleven pass/fail checks over the built tables
 api/main.py            serving layer
 api/static/            interface
 docs/                  report and findings
